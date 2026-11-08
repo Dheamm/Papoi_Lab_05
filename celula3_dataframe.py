@@ -26,7 +26,14 @@ spark = SparkSession.builder \
 
 spark.sparkContext.setLogLevel("ERROR")
 
-df_steam = spark.read.csv(csv_path, header=True, inferSchema=True)
+df_steam = spark.read.csv(
+    csv_path,
+    header=True,
+    inferSchema=True,
+    quote='"',
+    escape='"',
+    multiLine=True
+)
 
 df_steam = df_steam \
     .withColumn("to_beat_main", col("to_beat_main").cast(DoubleType())) \
@@ -56,12 +63,25 @@ df_transformado = df_limpio.withColumn(
 print("\n--- Salida DataFrame Transformado (Primeras 10 filas) ---")
 df_transformado.show(10, truncate=False)
 
-# ==========================================
-# PASO 3: Pendiente para Ítalo Osorio
-# ==========================================
-# Ítalo:
-# 1. groupBy("year").agg(...)
-# 2. orderBy(...)
-# 3. .explain(True)
+# PASO 3:
+
+from pyspark.sql import functions as F
+
+df_por_anio = df_transformado.groupBy("year").agg(
+    F.count("*").alias("total_juegos"),
+    F.round(F.avg("metacritic_rating"), 2).alias("metacritic_promedio"),
+    F.round(F.avg("to_beat_main"), 2).alias("horas_main_promedio"),
+    F.round(F.avg("horas_extra_100"), 2).alias("horas_extra_promedio"),
+    F.max("metacritic_rating").alias("metacritic_max")
+)
+
+df_ranking = df_por_anio.filter((col("total_juegos") >= 10) & col("year").isNotNull()) \
+    .orderBy(F.desc("metacritic_promedio"), F.asc("year"))
+
+print("\n--- Top 10 años con mejor Metacritic promedio (mín. 10 juegos) ---")
+df_ranking.show(10, truncate=False)
+
+print("\n--- Plan de ejecución: parsed, analyzed, optimized y physical ---")
+df_ranking.explain(True)
 
 spark.stop()
